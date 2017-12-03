@@ -8,6 +8,7 @@ import (
 	"github.com/leonelquinteros/gorand"
 
 	bolt "github.com/coreos/bbolt"
+	"github.com/philhug/bitwarden-client-go/bitwarden"
 )
 
 const BUCKET_ACCOUNTS = "Accounts"
@@ -49,8 +50,8 @@ func (db *DBBolt) close() {
 	db.db.Close()
 }
 
-func (db *DBBolt) getCipher(owner string, ciphID string) (Cipher, error) {
-	cipher := Cipher{}
+func (db *DBBolt) getCipher(owner string, ciphID string) (bitwarden.Cipher, error) {
+	cipher := bitwarden.Cipher{}
 	err := db.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("Ciphers"))
 		b = b.Bucket([]byte(owner))
@@ -62,8 +63,8 @@ func (db *DBBolt) getCipher(owner string, ciphID string) (Cipher, error) {
 	return cipher, err
 }
 
-func (db *DBBolt) getCiphers(owner string) ([]Cipher, error) {
-	var ciphers []Cipher
+func (db *DBBolt) getCiphers(owner string) ([]bitwarden.Cipher, error) {
+	var ciphers []bitwarden.Cipher
 	err := db.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(BUCKET_CIPHERS))
 		b = b.Bucket([]byte(owner))
@@ -71,9 +72,8 @@ func (db *DBBolt) getCiphers(owner string) ([]Cipher, error) {
 			c := b.Cursor()
 
 			for k, v := c.First(); k != nil; k, v = c.Next() {
-				var ciph Cipher
+				var ciph bitwarden.Cipher
 				json.Unmarshal(v, &ciph)
-				ciph.Object = "cipher"
 				ciph.Id = string(k)
 				ciphers = append(ciphers, ciph)
 			}
@@ -85,12 +85,12 @@ func (db *DBBolt) getCiphers(owner string) ([]Cipher, error) {
 	}
 
 	if len(ciphers) < 1 {
-		ciphers = make([]Cipher, 0) // Make an empty slice if there are none or android app will crash
+		ciphers = make([]bitwarden.Cipher, 0) // Make an empty slice if there are none or android app will crash
 	}
 	return ciphers, nil
 }
 
-func (db *DBBolt) newCipher(ciph Cipher, owner string) (Cipher, error) {
+func (db *DBBolt) newCipher(ciph bitwarden.Cipher, owner string) (bitwarden.Cipher, error) {
 	uuid, err := gorand.UUID()
 	if err != nil {
 		return ciph, err
@@ -98,7 +98,6 @@ func (db *DBBolt) newCipher(ciph Cipher, owner string) (Cipher, error) {
 
 	//ciph.RevisionDate = time.Now()
 	ciph.Id = uuid
-	ciph.Object = "cipher"
 
 	db.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("Ciphers"))
@@ -119,7 +118,7 @@ func (db *DBBolt) newCipher(ciph Cipher, owner string) (Cipher, error) {
 }
 
 // Important to check that the owner is correct before an update!
-func (db *DBBolt) updateCipher(newData Cipher, owner string, ciphID string) error {
+func (db *DBBolt) updateCipher(newData bitwarden.Cipher, owner string, ciphID string) error {
 	//newData.RevisionDate = time.Now()
 
 	db.db.Update(func(tx *bolt.Tx) error {
@@ -153,7 +152,7 @@ func (db *DBBolt) deleteCipher(owner string, ciphID string) error {
 	return nil
 }
 
-func (db *DBBolt) addAccount(acc Account) error {
+func (db *DBBolt) addAccount(acc bitwarden.Account) error {
 	if acc.Id == "" {
 		uuid, err := gorand.UUID()
 		if err != nil {
@@ -174,12 +173,12 @@ func (db *DBBolt) addAccount(acc Account) error {
 	return nil
 }
 
-func (db *DBBolt) updateAccountInfo(acc Account) error {
+func (db *DBBolt) updateAccountInfo(acc bitwarden.Account) error {
 	return db.addAccount(acc)
 }
 
-func (db *DBBolt) getAccount(username string) (Account, error) {
-	acc := Account{}
+func (db *DBBolt) getAccount(username string) (bitwarden.Account, error) {
+	acc := bitwarden.Account{}
 	db.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("Accounts"))
 		v := b.Get([]byte(username))
@@ -190,8 +189,8 @@ func (db *DBBolt) getAccount(username string) (Account, error) {
 	return acc, nil
 }
 
-func (db *DBBolt) addFolder(name string, owner string) (Folder, error) {
-	folder := Folder{}
+func (db *DBBolt) addFolder(name string, owner string) (bitwarden.Folder, error) {
+	folder := bitwarden.Folder{}
 	folder.Name = name
 
 	if folder.Id == "" {
@@ -220,8 +219,8 @@ func (db *DBBolt) addFolder(name string, owner string) (Folder, error) {
 	return folder, nil
 }
 
-func (db *DBBolt) getFolders(owner string) ([]Folder, error) {
-	var folders []Folder
+func (db *DBBolt) getFolders(owner string) ([]bitwarden.Folder, error) {
+	var folders []bitwarden.Folder
 	err := db.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(BUCKET_FOLDERS))
 		b = b.Bucket([]byte(owner))
@@ -229,7 +228,7 @@ func (db *DBBolt) getFolders(owner string) ([]Folder, error) {
 			c := b.Cursor()
 
 			for k, v := c.First(); k != nil; k, v = c.Next() {
-				var folder Folder
+				var folder bitwarden.Folder
 				json.Unmarshal(v, &folder)
 				folder.Object = "folder"
 				folder.Id = string(k)
@@ -243,7 +242,7 @@ func (db *DBBolt) getFolders(owner string) ([]Folder, error) {
 	}
 
 	if len(folders) < 1 {
-		folders = make([]Folder, 0)
+		folders = make([]bitwarden.Folder, 0)
 	}
 	return folders, nil
 }

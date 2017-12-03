@@ -15,6 +15,7 @@ import (
 	"golang.org/x/crypto/pbkdf2"
 
 	jwt "github.com/dgrijalva/jwt-go"
+	"github.com/philhug/bitwarden-client-go/bitwarden"
 )
 
 func reHashPassword(key, salt string) (string, error) {
@@ -50,7 +51,7 @@ func handleProfile(w http.ResponseWriter, req *http.Request) {
 
 func handleRegister(w http.ResponseWriter, req *http.Request) {
 	decoder := json.NewDecoder(req.Body)
-	var acc Account
+	var acc bitwarden.Account
 	err := decoder.Decode(&acc)
 	if err != nil {
 		log.Fatal(err)
@@ -106,7 +107,7 @@ func handleLogin(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var acc Account
+	var acc bitwarden.Account
 	var err error
 	if grantType[0] == "refresh_token" {
 		rrefreshToken := req.PostForm["refresh_token"][0]

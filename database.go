@@ -2,13 +2,13 @@ package main
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	uuid "github.com/satori/go.uuid"
+	"github.com/philhug/bitwarden-client-go/bitwarden"
 )
 
 type DB struct {
@@ -61,13 +61,13 @@ func (db *DB) close() {
 	db.db.Close()
 }
 
-func (db *DB) getCiphers(owner string) ([]Cipher, error) {
+func (db *DB) getCiphers(owner string) ([]bitwarden.Cipher, error) {
 	iowner, err := strconv.ParseInt(owner, 10, 64)
 	if err != nil {
 		return nil, err
 	}
 
-	var ciphers []Cipher
+	var ciphers []bitwarden.Cipher
 	query := "SELECT id, type, revisiondate, data FROM ciphers WHERE owner = $1"
 	rows, err := db.db.Query(query, iowner)
 
@@ -75,11 +75,10 @@ func (db *DB) getCiphers(owner string) ([]Cipher, error) {
 	var revDate int64
 	var blob []byte
 	for rows.Next() {
-		ciph := Cipher{
+		ciph := bitwarden.Cipher{
 			Favorite:            false,
 			Edit:                true,
 			OrganizationUseTotp: false,
-			Object:              "cipher",
 			Attachments:         nil,
 		}
 
@@ -87,36 +86,36 @@ func (db *DB) getCiphers(owner string) ([]Cipher, error) {
 		if err != nil {
 			return nil, err
 		}
-		err = json.Unmarshal(blob, &ciph.Data)
+		err = ciph.UnMarshalData(blob)
 		if err != nil {
 			return nil, err
 		}
 		ciph.Id = strconv.Itoa(iid)
-		ciph.RevisionDate = time.Unix(revDate, 0)
+		ciph.RevisionDate = &bitwarden.Time{time.Unix(revDate, 0)}
 
 		ciphers = append(ciphers, ciph)
 	}
 
 	if len(ciphers) < 1 {
-		ciphers = make([]Cipher, 0) // Make an empty slice if there are none or android app will crash
+		ciphers = make([]bitwarden.Cipher, 0) // Make an empty slice if there are none or android app will crash
 	}
 	return ciphers, err
 }
 
-func (db *DB) newCipher(ciph Cipher, owner string) (Cipher, error) {
+func (db *DB) newCipher(ciph bitwarden.Cipher, owner string) (bitwarden.Cipher, error) {
 	iowner, err := strconv.ParseInt(owner, 10, 64)
 	if err != nil {
-		return Cipher{}, err
+		return bitwarden.Cipher{}, err
 	}
 
-	ciph.RevisionDate = time.Now()
+	ciph.RevisionDate = &bitwarden.Time{time.Now()}
 
 	stmt, err := db.db.Prepare("INSERT INTO ciphers(type, revisiondate, data, owner) values(?,?,?, ?)")
 	if err != nil {
 		return ciph, err
 	}
 
-	data, err := ciph.Data.bytes()
+	data, err := ciph.MarshalData()
 	if err != nil {
 		return ciph, err
 	}
@@ -134,7 +133,7 @@ func (db *DB) newCipher(ciph Cipher, owner string) (Cipher, error) {
 }
 
 // Important to check that the owner is correct before an update!
-func (db *DB) updateCipher(newData Cipher, owner string, ciphID string) error {
+func (db *DB) updateCipher(newData bitwarden.Cipher, owner string, ciphID string) error {
 	iowner, err := strconv.ParseInt(owner, 10, 64)
 	if err != nil {
 		return err
@@ -150,7 +149,7 @@ func (db *DB) updateCipher(newData Cipher, owner string, ciphID string) error {
 		return err
 	}
 
-	bdata, err := newData.Data.bytes()
+	bdata, err := newData.MarshalData()
 	if err != nil {
 		return err
 	}
@@ -187,7 +186,7 @@ func (db *DB) deleteCipher(owner string, ciphID string) error {
 	return nil
 }
 
-func (db *DB) addAccount(acc Account) error {
+func (db *DB) addAccount(acc bitwarden.Account) error {
 	stmt, err := db.db.Prepare("INSERT INTO accounts(name, email, masterPasswordHash, masterPasswordHint, key, refreshtoken) values(?,?,?,?,?, ?)")
 	if err != nil {
 		return err
@@ -201,7 +200,7 @@ func (db *DB) addAccount(acc Account) error {
 	return nil
 }
 
-func (db *DB) updateAccountInfo(acc Account) error {
+func (db *DB) updateAccountInfo(acc bitwarden.Account) error {
 	id, err := strconv.ParseInt(acc.Id, 10, 64)
 	if err != nil {
 		return err
@@ -220,9 +219,9 @@ func (db *DB) updateAccountInfo(acc Account) error {
 	return nil
 }
 
-func (db *DB) getAccount(username string) (Account, error) {
+func (db *DB) getAccount(username string) (bitwarden.Account, error) {
 	var row *sql.Row
-	acc := Account{}
+	acc := bitwarden.Account{}
 	if username != "" {
 		query := "SELECT * FROM accounts WHERE email = $1"
 		row = db.db.QueryRow(query, username)
@@ -239,39 +238,39 @@ func (db *DB) getAccount(username string) (Account, error) {
 	return acc, nil
 }
 
-func (db *DB) addFolder(name string, owner string) (Folder, error) {
+func (db *DB) addFolder(name string, owner string) (bitwarden.Folder, error) {
 	iowner, err := strconv.ParseInt(owner, 10, 64)
 	if err != nil {
-		return Folder{}, err
+		return bitwarden.Folder{}, err
 	}
 
-	folder := Folder{
+	folder := bitwarden.Folder{
 		Id:           uuid.NewV4().String(),
 		Name:         name,
 		Object:       "folder",
-		RevisionDate: time.Now(),
+		RevisionDate: &bitwarden.Time{time.Now()},
 	}
 
 	stmt, err := db.db.Prepare("INSERT INTO folders(id, name, revisiondate, owner) values(?,?,?, ?)")
 	if err != nil {
-		return Folder{}, err
+		return bitwarden.Folder{}, err
 	}
 
 	_, err = stmt.Exec(folder.Id, folder.Name, folder.RevisionDate.Unix(), iowner)
 	if err != nil {
-		return Folder{}, err
+		return bitwarden.Folder{}, err
 	}
 
 	return folder, nil
 }
 
-func (db *DB) getFolders(owner string) ([]Folder, error) {
+func (db *DB) getFolders(owner string) ([]bitwarden.Folder, error) {
 	iowner, err := strconv.ParseInt(owner, 10, 64)
 	if err != nil {
 		return nil, err
 	}
 
-	var folders []Folder
+	var folders []bitwarden.Folder
 	query := "SELECT id, name, revisiondate FROM folders WHERE owner = $1"
 	rows, err := db.db.Query(query, iowner)
 	if err != nil {
@@ -280,18 +279,18 @@ func (db *DB) getFolders(owner string) ([]Folder, error) {
 
 	var revDate int64
 	for rows.Next() {
-		f := Folder{}
+		f := bitwarden.Folder{}
 		err := rows.Scan(&f.Id, &f.Name, &revDate)
 		if err != nil {
 			return nil, err
 		}
-		f.RevisionDate = time.Unix(revDate, 0)
+		f.RevisionDate = &bitwarden.Time{time.Unix(revDate, 0)}
 
 		folders = append(folders, f)
 	}
 
 	if len(folders) < 1 {
-		folders = make([]Folder, 0) // Make an empty slice if there are none or android app will crash
+		folders = make([]bitwarden.Folder, 0) // Make an empty slice if there are none or android app will crash
 	}
 	return folders, err
 }

@@ -1,6 +1,9 @@
 package main
 
-import _ "github.com/mattn/go-sqlite3"
+import (
+	_ "github.com/mattn/go-sqlite3"
+	"github.com/philhug/bitwarden-client-go/bitwarden"
+)
 
 // mock database used for testing
 type mockDB struct {
@@ -20,20 +23,20 @@ func (db *mockDB) open() error {
 func (db *mockDB) close() {
 }
 
-func (db *mockDB) updateAccountInfo(acc Account) error {
+func (db *mockDB) updateAccountInfo(acc bitwarden.Account) error {
 	return nil
 }
 
-func (db *mockDB) getCiphers(owner string) ([]Cipher, error) {
+func (db *mockDB) getCiphers(owner string) ([]bitwarden.Cipher, error) {
 	return nil, nil
 }
 
-func (db *mockDB) newCipher(ciph Cipher, owner string) (Cipher, error) {
-	return Cipher{}, nil
+func (db *mockDB) newCipher(ciph bitwarden.Cipher, owner string) (bitwarden.Cipher, error) {
+	return bitwarden.Cipher{}, nil
 
 }
 
-func (db *mockDB) updateCipher(newData Cipher, owner string, ciphID string) error {
+func (db *mockDB) updateCipher(newData bitwarden.Cipher, owner string, ciphID string) error {
 	return nil
 }
 
@@ -41,18 +44,18 @@ func (db *mockDB) deleteCipher(owner string, ciphID string) error {
 	return nil
 }
 
-func (db *mockDB) addAccount(acc Account) error {
+func (db *mockDB) addAccount(acc bitwarden.Account) error {
 	return nil
 }
 
-func (db *mockDB) getAccount(username string) (Account, error) {
-	return Account{Email: db.username, MasterPasswordHash: db.password, RefreshToken: db.refreshToken}, nil
+func (db *mockDB) getAccount(username string) (bitwarden.Account, error) {
+	return bitwarden.Account{Email: db.username, MasterPasswordHash: db.password, RefreshToken: db.refreshToken}, nil
 }
 
-func (db *mockDB) addFolder(name string, owner string) (Folder, error) {
-	return Folder{}, nil
+func (db *mockDB) addFolder(name string, owner string) (bitwarden.Folder, error) {
+	return bitwarden.Folder{}, nil
 }
 
-func (db *mockDB) getFolders(owner string) ([]Folder, error) {
+func (db *mockDB) getFolders(owner string) ([]bitwarden.Folder, error) {
 	return nil, nil
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/rs/cors"
 	"strings"
+	"github.com/philhug/bitwarden-client-go/bitwarden"
 )
 
 // The data we get from the client. Only used to parse data
@@ -30,7 +31,7 @@ type loginData struct {
 
 func handleCollections(w http.ResponseWriter, req *http.Request) {
 
-	collections := Data{Object: "list", Data: []string{}}
+	collections := bitwarden.List{Object: "list", Data: []string{}}
 	data, err := json.Marshal(collections)
 	if err != nil {
 		log.Fatal(err)
@@ -52,7 +53,7 @@ func handleCipher(w http.ResponseWriter, req *http.Request) {
 	var data []byte
 
 	if req.Method == "POST" {
-		rCiph, err := unmarshalCipher(req.Body)
+		rCiph, err := unmarshalCipherRequest(req)
 		if err != nil {
 			log.Fatal("Cipher decode error" + err.Error())
 		}
@@ -62,16 +63,21 @@ func handleCipher(w http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			log.Fatal("newCipher error" + err.Error())
 		}
-		data, err = json.Marshal(&newCiph)
+		respCiph := bitwarden.NewCipherResponse(newCiph)
+		data, err = json.Marshal(&respCiph)
 		if err != nil {
 			log.Fatal(err)
 		}
 	} else {
-		ciphs, err := db.getCiphers(acc.Id)
+		ciphers, err := db.getCiphers(acc.Id)
 		if err != nil {
 			log.Println(err)
 		}
-		list := Data{Object: "list", Data: ciphs}
+		ciphs := make([]bitwarden.CipherResponse, len(ciphers))
+		for i, c := range ciphers {
+			ciphs[i] = bitwarden.NewCipherResponse(c)
+		}
+		list := bitwarden.List{Object: "list", Data: ciphs}
 		data, err = json.Marshal(&list)
 		if err != nil {
 			log.Fatal("UAAH")
@@ -81,6 +87,47 @@ func handleCipher(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(data)
+}
+
+type deleteIdRequest struct {
+	Ids	[]string
+}
+
+// This function handles deleteing / needed by web-UI
+func handleCipherDelete(w http.ResponseWriter, req *http.Request) {
+	email := req.Context().Value(ctxKey("email")).(string)
+	log.Println(email + " is trying to delete his data")
+
+	// Get the cipher id
+	id := strings.TrimPrefix(req.URL.Path, "/api/ciphers/")
+
+	acc, err := db.getAccount(email)
+	if err != nil {
+		log.Fatal("Account lookup " + err.Error())
+	}
+
+	decoder := json.NewDecoder(req.Body)
+	defer req.Body.Close()
+
+	var dreq deleteIdRequest
+	err = decoder.Decode(&dreq)
+	if err != nil {
+		log.Fatal("Cannot decode request " + err.Error())
+	}
+
+	for _, id := range dreq.Ids {
+		err = db.deleteCipher(acc.Id, id)
+		if err != nil {
+			w.Write([]byte("0"))
+			log.Println(err)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(""))
+	log.Println("Cipher " + id + " deleted")
+	return
 }
 
 // This function handles updates and deleteing
@@ -114,7 +161,8 @@ func handleCipherUpdate(w http.ResponseWriter, req *http.Request) {
 	case "POST":
 		log.Println("POST Ciphers")
 		var data []byte
-		rCiph, err := unmarshalCipher(req.Body)
+
+		rCiph, err := unmarshalCipherRequest(req)
 		if err != nil {
 			log.Fatal("Cipher decode error" + err.Error())
 		}
@@ -124,14 +172,16 @@ func handleCipherUpdate(w http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			log.Fatal("newCipher error" + err.Error())
 		}
-		data, err = json.Marshal(&newCiph)
+
+		respCiph := bitwarden.NewCipherResponse(newCiph)
+		data, err = json.Marshal(&respCiph)
 		if err != nil {
 			log.Fatal(err)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(data)
 	case "PUT":
-		rCiph, err := unmarshalCipher(req.Body)
+		rCiph, err := unmarshalCipherRequest(req)
 		if err != nil {
 			log.Fatal("Cipher decode error" + err.Error())
 		}
@@ -147,7 +197,8 @@ func handleCipherUpdate(w http.ResponseWriter, req *http.Request) {
 		}
 
 		// Send response
-		data, err := json.Marshal(&rCiph)
+		respCiph := bitwarden.NewCipherResponse(rCiph)
+		data, err := json.Marshal(&respCiph)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -183,7 +234,7 @@ func handleSync(w http.ResponseWriter, req *http.Request) {
 
 	acc, err := db.getAccount(email)
 
-	prof := Profile{
+	prof := bitwarden.Profile{
 		Id:               acc.Id,
 		Email:            acc.Email,
 		EmailVerified:    false,
@@ -196,9 +247,14 @@ func handleSync(w http.ResponseWriter, req *http.Request) {
 		Object:           "profile",
 	}
 
-	ciphs, err := db.getCiphers(acc.Id)
+	ciphers, err := db.getCiphers(acc.Id)
 	if err != nil {
 		log.Println(err)
+	}
+
+	ciphs := make([]bitwarden.CipherDetailsResponse, len(ciphers))
+	for i, c := range ciphers {
+		ciphs[i] = bitwarden.NewCipherDetailsResponse(c)
 	}
 
 	folders, err := db.getFolders(acc.Id)
@@ -206,15 +262,15 @@ func handleSync(w http.ResponseWriter, req *http.Request) {
 		log.Println(err)
 	}
 
-	Domains := Domains{
+	Domains := bitwarden.Domains{
 		Object:            "domains",
 		EquivalentDomains: nil,
-		GlobalEquivalentDomains: []GlobalEquivalentDomains{
-			GlobalEquivalentDomains{Type: 1, Domains: []string{"youtube.com", "google.com", "gmail.com"}, Excluded: false},
+		GlobalEquivalentDomains: []bitwarden.GlobalEquivalentDomains{
+			bitwarden.GlobalEquivalentDomains{Type: 1, Domains: []string{"youtube.com", "google.com", "gmail.com"}, Excluded: false},
 		},
 	}
 
-	data := SyncData{
+	data := bitwarden.SyncData{
 		Profile: prof,
 		Folders: folders,
 		Domains: Domains,
@@ -269,7 +325,7 @@ func handleFolder(w http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			log.Println(err)
 		}
-		list := Data{Object: "list", Data: folders}
+		list := bitwarden.List{Object: "list", Data: folders}
 		data, err = json.Marshal(list)
 		if err != nil {
 			log.Fatal(err)
@@ -280,21 +336,38 @@ func handleFolder(w http.ResponseWriter, req *http.Request) {
 	w.Write(data)
 }
 
+func unmarshalCipherRequest(req *http.Request) (bitwarden.Cipher, error){
+	decoder := json.NewDecoder(req.Body)
+	defer req.Body.Close()
+
+	var creq bitwarden.CipherRequest
+	err := decoder.Decode(&creq)
+	if err != nil {
+		log.Fatal("Cannot decode request " + err.Error())
+	}
+
+	rCiph, err := creq.ToCipher()
+	if err != nil {
+		log.Fatal("Cipher decode error" + err.Error())
+	}
+	return rCiph, err
+}
+
 // Interface to make testing easier
 type database interface {
 	init() error
-	addAccount(acc Account) error
-	getAccount(username string) (Account, error)
-	updateAccountInfo(acc Account) error
-	getCipher(owner string, ciphID string) (Cipher, error)
-	getCiphers(owner string) ([]Cipher, error)
-	newCipher(ciph Cipher, owner string) (Cipher, error)
-	updateCipher(newData Cipher, owner string, ciphID string) error
+	addAccount(acc bitwarden.Account) error
+	getAccount(username string) (bitwarden.Account, error)
+	updateAccountInfo(acc bitwarden.Account) error
+	getCipher(owner string, ciphID string) (bitwarden.Cipher, error)
+	getCiphers(owner string) ([]bitwarden.Cipher, error)
+	newCipher(ciph bitwarden.Cipher, owner string) (bitwarden.Cipher, error)
+	updateCipher(newData bitwarden.Cipher, owner string, ciphID string) error
 	deleteCipher(owner string, ciphID string) error
 	open() error
 	close()
-	addFolder(name string, owner string) (Folder, error)
-	getFolders(owner string) ([]Folder, error)
+	addFolder(name string, owner string) (bitwarden.Folder, error)
+	getFolders(owner string) ([]bitwarden.Folder, error)
 }
 
 func main() {
@@ -329,6 +402,7 @@ func main() {
 	mux.Handle("/api/sync", jwtMiddleware(http.HandlerFunc(handleSync)))
 
 	mux.Handle("/api/ciphers", jwtMiddleware(http.HandlerFunc(handleCipher)))
+	mux.Handle("/api/ciphers/delete", jwtMiddleware(http.HandlerFunc(handleCipherDelete)))
 	mux.Handle("/api/ciphers/", jwtMiddleware(http.HandlerFunc(handleCipherUpdate)))
 
 	//mux.Handle("/api/ciphers", jwtMiddleware(http.HandlerFunc(handleCipher)))
