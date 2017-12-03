@@ -40,7 +40,8 @@ func handleProfile(w http.ResponseWriter, req *http.Request) {
 		log.Fatal(err)
 	}
 
-	data, err := json.Marshal(&acc)
+	profile := bitwarden.NewProfileResponse(acc)
+	data, err := json.Marshal(&profile)
 	if err != nil {
 		log.Fatal(err)
 	}
